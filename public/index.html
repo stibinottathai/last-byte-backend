@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Last Byte — API Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <!-- ====== SIDEBAR ====== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-icon">🍔</span>
+      <h1>Last Byte</h1>
+    </div>
+
+    <div class="sidebar-user" id="sidebarUser" style="display:none;">
+      <div class="user-avatar" id="userAvatar">U</div>
+      <div class="user-info">
+        <span class="user-name" id="userName">—</span>
+        <span class="user-role" id="userRole">—</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <span class="nav-label">General</span>
+        <button class="nav-item active" data-view="auth" id="navAuth">
+          <span class="nav-icon">🔐</span> Authentication
+        </button>
+        <button class="nav-item" data-view="listings" id="navListings">
+          <span class="nav-icon">🛒</span> Browse Listings
+        </button>
+      </div>
+
+      <div class="nav-section" id="shopNav" style="display:none;">
+        <span class="nav-label">Shop Owner</span>
+        <button class="nav-item" data-view="shop-listings" id="navShopListings">
+          <span class="nav-icon">📦</span> My Listings
+        </button>
+        <button class="nav-item" data-view="shop-profile" id="navShopProfile">
+          <span class="nav-icon">🏪</span> Shop Profile
+        </button>
+      </div>
+
+      <div class="nav-section" id="adminNav" style="display:none;">
+        <span class="nav-label">Admin</span>
+        <button class="nav-item" data-view="admin-users" id="navAdminUsers">
+          <span class="nav-icon">👥</span> Manage Users
+        </button>
+        <button class="nav-item" data-view="admin-shops" id="navAdminShops">
+          <span class="nav-icon">🏬</span> Manage Shops
+        </button>
+        <button class="nav-item" data-view="admin-stats" id="navAdminStats">
+          <span class="nav-icon">📊</span> Dashboard Stats
+        </button>
+      </div>
+    </nav>
+
+    <button class="sidebar-logout" id="btnLogout" style="display:none;">
+      <span class="nav-icon">🚪</span> Logout
+    </button>
+  </aside>
+
+  <!-- ====== MAIN CONTENT ====== -->
+  <main class="main" id="mainContent">
+
+    <!-- ===== AUTH VIEW ===== -->
+    <div class="view active" id="view-auth">
+      <div class="auth-container">
+        <div class="auth-card">
+          <div class="auth-tabs">
+            <button class="auth-tab active" id="tabLogin" onclick="showAuthTab('login')">Login</button>
+            <button class="auth-tab" id="tabRegister" onclick="showAuthTab('register')">Register</button>
+          </div>
+
+          <!-- Login Form -->
+          <form class="auth-form" id="loginForm" onsubmit="handleLogin(event)">
+            <h2>Welcome back</h2>
+            <p class="auth-subtitle">Sign in to your account</p>
+            <div class="form-group">
+              <label for="loginEmail">Email</label>
+              <input type="email" id="loginEmail" placeholder="you@example.com" required />
+            </div>
+            <div class="form-group">
+              <label for="loginPassword">Password</label>
+              <input type="password" id="loginPassword" placeholder="••••••••" required />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full" id="btnLogin">Sign In</button>
+            <div class="auth-hint">
+              <p><strong>Test Accounts:</strong></p>
+              <p>Admin: <code>admin@lastbyte.com</code> / <code>admin123</code></p>
+              <p>Shop: <code>ravi@lastbyte.com</code> / <code>shop123</code></p>
+              <p>User: <code>user@lastbyte.com</code> / <code>user123</code></p>
+            </div>
+          </form>
+
+          <!-- Register Form -->
+          <form class="auth-form hidden" id="registerForm" onsubmit="handleRegister(event)">
+            <h2>Create account</h2>
+            <p class="auth-subtitle">Join Last Byte today</p>
+            <div class="form-group">
+              <label for="regName">Full Name</label>
+              <input type="text" id="regName" placeholder="John Doe" required />
+            </div>
+            <div class="form-group">
+              <label for="regEmail">Email</label>
+              <input type="email" id="regEmail" placeholder="you@example.com" required />
+            </div>
+            <div class="form-group">
+              <label for="regPhone">Phone</label>
+              <input type="tel" id="regPhone" placeholder="+91 9876543210" />
+            </div>
+            <div class="form-group">
+              <label for="regPassword">Password</label>
+              <input type="password" id="regPassword" placeholder="Min 6 characters" required minlength="6" />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Create Account</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PUBLIC LISTINGS VIEW ===== -->
+    <div class="view" id="view-listings">
+      <div class="view-header">
+        <div>
+          <h2>Available Deals</h2>
+          <p class="view-subtitle">Grab fresh food at amazing prices before shops close</p>
+        </div>
+        <div class="header-actions">
+          <input type="text" id="listingSearch" class="input-search" placeholder="Search food items..." oninput="debounceSearch()" />
+          <select id="listingCategory" class="input-select" onchange="loadPublicListings()">
+            <option value="">All Categories</option>
+            <option value="bakery">🥐 Bakery</option>
+            <option value="meals">🍛 Meals</option>
+            <option value="snacks">🍟 Snacks</option>
+            <option value="beverages">🥤 Beverages</option>
+            <option value="dairy">🧀 Dairy</option>
+            <option value="fruits">🍎 Fruits</option>
+            <option value="vegetables">🥦 Vegetables</option>
+            <option value="other">📦 Other</option>
+          </select>
+          <select id="listingDietary" class="input-select" onchange="loadPublicListings()">
+            <option value="">Veg / Non-veg</option>
+            <option value="veg">Veg</option>
+            <option value="non-veg">Non-veg</option>
+          </select>
+          <select id="listingCuisine" class="input-select" onchange="loadPublicListings()">
+            <option value="">All cuisines</option>
+            <option value="indian">Indian</option>
+            <option value="arabic">Arabic</option>
+            <option value="bakery">Bakery</option>
+            <option value="continental">Continental</option>
+            <option value="chinese">Chinese</option>
+            <option value="italian">Italian</option>
+            <option value="desserts">Desserts</option>
+          </select>
+          <select id="listingAvailability" class="input-select" onchange="loadPublicListings()">
+            <option value="">Any time</option>
+            <option value="ready_now">Ready now</option>
+            <option value="pre_order">Pre-order</option>
+          </select>
+          <select id="listingSort" class="input-select" onchange="loadPublicListings()">
+            <option value="nearby">Nearby</option>
+            <option value="expires_soon">Closing soon</option>
+            <option value="discount">Biggest discount</option>
+            <option value="price_asc">Lowest price</option>
+          </select>
+          <input type="number" id="listingMaxPrice" class="input-number" min="0" placeholder="Max price" oninput="debounceSearch()" />
+          <button class="btn btn-ghost" onclick="useMyLocation()">Use my location</button>
+        </div>
+      </div>
+      <div class="deal-quick-filters">
+        <button class="chip active" id="chipAllDeals" onclick="setQuickDealFilter('all')">All deals</button>
+        <button class="chip" id="chipClosingSoon" onclick="setQuickDealFilter('closingSoon')">Closing soon</button>
+        <button class="chip" id="chipBigDiscount" onclick="setQuickDealFilter('bigDiscount')">80% off+</button>
+        <span class="location-status" id="locationStatus">Showing all shops</span>
+      </div>
+      <div class="listings-grid" id="publicListingsGrid">
+        <div class="empty-state"><p>Loading listings...</p></div>
+      </div>
+    </div>
+
+    <!-- ===== SHOP LISTINGS VIEW ===== -->
+    <div class="view" id="view-shop-listings">
+      <div class="view-header">
+        <div>
+          <h2>My Listings</h2>
+          <p class="view-subtitle">Manage your food listings</p>
+        </div>
+        <button class="btn btn-primary" onclick="openCreateListingModal()">+ New Listing</button>
+      </div>
+      <div class="data-table-wrapper">
+        <table class="data-table" id="shopListingsTable">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Category</th>
+              <th>Original ₹</th>
+              <th>Discounted ₹</th>
+              <th>Qty</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="shopListingsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== SHOP PROFILE VIEW ===== -->
+    <div class="view" id="view-shop-profile">
+      <div class="view-header">
+        <h2>Shop Profile</h2>
+      </div>
+      <form class="detail-card" id="shopProfileForm" onsubmit="handleShopProfileUpdate(event)">
+        <div class="form-row">
+          <div class="form-group"><label>Your Name</label><input type="text" id="spName" /></div>
+          <div class="form-group"><label>Phone</label><input type="text" id="spPhone" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Shop Name</label><input type="text" id="spShopName" /></div>
+          <div class="form-group"><label>Shop Address</label><input type="text" id="spShopAddress" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Latitude</label><input type="number" id="spShopLat" step="0.000001" /></div>
+          <div class="form-group"><label>Longitude</label><input type="number" id="spShopLng" step="0.000001" /></div>
+          <div class="form-group"><label>Pickup Minutes</label><input type="number" id="spPickupMinutes" min="0" /></div>
+        </div>
+        <div class="form-group"><label>Shop Description</label><textarea id="spShopDesc" rows="3"></textarea></div>
+        <button type="submit" class="btn btn-primary">Update Profile</button>
+      </form>
+    </div>
+
+    <!-- ===== ADMIN USERS VIEW ===== -->
+    <div class="view" id="view-admin-users">
+      <div class="view-header">
+        <div>
+          <h2>User Management</h2>
+          <p class="view-subtitle">View and manage all users</p>
+        </div>
+        <input type="text" id="adminUserSearch" class="input-search" placeholder="Search users..." oninput="debounceAdminUserSearch()" />
+      </div>
+      <div class="data-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="adminUsersBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== ADMIN SHOPS VIEW ===== -->
+    <div class="view" id="view-admin-shops">
+      <div class="view-header">
+        <div>
+          <h2>Shop Owner Management</h2>
+          <p class="view-subtitle">Manage shop owner accounts</p>
+        </div>
+        <button class="btn btn-primary" onclick="openCreateShopOwnerModal()">+ Add Shop Owner</button>
+      </div>
+      <div class="data-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr><th>Name</th><th>Email</th><th>Shop Name</th><th>Address</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="adminShopsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== ADMIN STATS VIEW ===== -->
+    <div class="view" id="view-admin-stats">
+      <div class="view-header"><h2>Dashboard Statistics</h2></div>
+      <div class="stats-grid" id="statsGrid"></div>
+    </div>
+
+  </main>
+
+  <!-- ====== MODAL ====== -->
+  <div class="modal-overlay" id="modalOverlay" onclick="closeModal()">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="modalTitle">Modal</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- ====== TOAST ====== -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
