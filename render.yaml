@@ -1,0 +1,23 @@
+# Render Blueprint — auto-configures the service when imported
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: last-byte-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false          # You must set this manually in the Render dashboard
+      - key: JWT_SECRET
+        generateValue: true  # Render auto-generates a random secret
+      - key: JWT_REFRESH_SECRET
+        generateValue: true  # Render auto-generates a random secret
+      - key: JWT_EXPIRE
+        value: 30m
+      - key: JWT_REFRESH_EXPIRE
+        value: 7d

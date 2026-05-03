@@ -5,3 +5,6 @@ npm-debug.log*
 .DS_Store
 dist/
 coverage/
+.vercel/
+server.out.log
+server.err.log
