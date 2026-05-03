@@ -1,4 +1,5 @@
 const dotenv = require('dotenv');
+const http = require('http');
 
 // Load env vars
 dotenv.config();
@@ -6,6 +7,9 @@ dotenv.config();
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
 const seedIfEmpty = require('./src/utils/seeder');
+const { startExpiredListingCleanup } = require('./src/utils/expiredListings');
+const { startExpiredOrderCleanup } = require('./src/utils/expiredOrders');
+const socketModule = require('./src/config/socket');
 
 const PORT = process.env.PORT || 5000;
 
@@ -13,8 +17,14 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   await connectDB();
   await seedIfEmpty();
+  startExpiredListingCleanup();
+  startExpiredOrderCleanup();
 
-  const server = app.listen(PORT, () => {
+  // Create HTTP server and attach Socket.IO
+  const httpServer = http.createServer(app);
+  socketModule.init(httpServer);
+
+  httpServer.listen(PORT, () => {
     console.log(`🍔 Last Byte API Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
     console.log(`   http://localhost:${PORT}\n`);
   });
@@ -22,7 +32,7 @@ const startServer = async () => {
   // Handle unhandled promise rejections
   process.on('unhandledRejection', (err) => {
     console.error(`❌ Unhandled Rejection: ${err.message}`);
-    server.close(() => process.exit(1));
+    httpServer.close(() => process.exit(1));
   });
 };
 

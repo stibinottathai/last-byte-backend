@@ -29,6 +29,11 @@ const listingSchema = new mongoose.Schema(
       min: [0, 'Quantity cannot be negative'],
       default: 1,
     },
+    maxQuantityPerUser: {
+      type: Number,
+      min: [1, 'Per-user booking limit must be at least 1'],
+      default: 2,
+    },
     category: {
       type: String,
       enum: ['bakery', 'meals', 'snacks', 'beverages', 'dairy', 'fruits', 'vegetables', 'other'],
@@ -86,6 +91,24 @@ const listingSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    moderationStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'approved',
+    },
+    moderationNote: {
+      type: String,
+      trim: true,
+    },
+    reportCount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    reportReasons: [{
+      type: String,
+      trim: true,
+    }],
     expiresAt: {
       type: Date,
     },
@@ -96,7 +119,8 @@ const listingSchema = new mongoose.Schema(
 );
 
 listingSchema.index({ shopLocation: '2dsphere' });
-listingSchema.index({ isAvailable: 1, expiresAt: 1, dietaryType: 1, cuisine: 1, availabilityType: 1 });
+listingSchema.index({ isAvailable: 1, moderationStatus: 1, expiresAt: 1, dietaryType: 1, cuisine: 1, availabilityType: 1 });
+listingSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Virtual: discount percentage
 listingSchema.virtual('discountPercentage').get(function () {

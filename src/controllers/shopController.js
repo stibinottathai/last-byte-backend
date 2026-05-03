@@ -16,12 +16,17 @@ const buildShopLocation = (latitude, longitude) => {
 
 exports.createListing = async (req, res, next) => {
   try {
+    if (req.user.shopApprovalStatus !== 'approved') {
+      return next(new ApiError('Your shop must be approved by admin before creating listings', 403));
+    }
+
     const {
       title,
       description,
       originalPrice,
       discountedPrice,
       quantity,
+      maxQuantityPerUser,
       category,
       cuisine,
       dietaryType,
@@ -40,12 +45,13 @@ exports.createListing = async (req, res, next) => {
 
     const listing = await Listing.create({
       title, description, originalPrice, discountedPrice,
-      quantity, category, cuisine, dietaryType, availabilityType,
+      quantity, maxQuantityPerUser, category, cuisine, dietaryType, availabilityType,
       readyAt, pickupStartAt, pickupEndAt,
       averagePickupMinutes: averagePickupMinutes ?? req.user.averagePickupMinutes,
       image, expiresAt,
       shopLocation: req.user.shopLocation,
       shopOwner: req.user._id,
+      moderationStatus: 'approved',
     });
 
     res.status(201).json({ success: true, message: 'Listing created successfully', data: listing });
@@ -85,7 +91,7 @@ exports.updateListing = async (req, res, next) => {
 
     const allowedFields = [
       'title', 'description', 'originalPrice', 'discountedPrice', 'quantity', 'category',
-      'cuisine', 'dietaryType', 'availabilityType', 'readyAt', 'pickupStartAt',
+      'maxQuantityPerUser', 'cuisine', 'dietaryType', 'availabilityType', 'readyAt', 'pickupStartAt',
       'pickupEndAt', 'averagePickupMinutes', 'image', 'isAvailable', 'expiresAt',
     ];
     const updates = {};

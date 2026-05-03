@@ -47,6 +47,9 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 // Shop owner routes
 app.use('/api/shop', require('./routes/shopRoutes'));
 
+// Order routes
+app.use('/api/orders', require('./routes/orderRoutes'));
+
 // Public listing routes
 app.use('/api/listings', require('./routes/listingRoutes'));
 

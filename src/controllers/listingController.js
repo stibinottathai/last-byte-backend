@@ -1,4 +1,5 @@
 const Listing = require('../models/Listing');
+const User = require('../models/User');
 
 const toNumber = (value) => {
   if (value === undefined || value === null || value === '') return undefined;
@@ -55,9 +56,17 @@ exports.getListings = async (req, res, next) => {
 
     const filter = {
       isAvailable: true,
+      moderationStatus: 'approved',
       quantity: { $gt: 0 },
       $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: now } }],
     };
+
+    const activeShopOwnerIds = await User.find({
+      role: 'shopOwner',
+      isActive: true,
+      shopApprovalStatus: 'approved',
+    }).distinct('_id');
+    filter.shopOwner = { $in: activeShopOwnerIds };
 
     if (req.query.category) filter.category = req.query.category;
     if (req.query.dietaryType) filter.dietaryType = req.query.dietaryType;
@@ -100,7 +109,7 @@ exports.getListings = async (req, res, next) => {
 
     const [listingDocs, totalBeforeDistanceFilter] = await Promise.all([
       Listing.find(filter)
-        .populate('shopOwner', 'name shopName shopAddress shopLocation averagePickupMinutes')
+        .populate('shopOwner', 'name shopName shopAddress shopLocation averagePickupMinutes isActive shopApprovalStatus')
         .sort(sort),
       Listing.countDocuments(filter),
     ]);
@@ -149,12 +158,26 @@ exports.getListings = async (req, res, next) => {
 exports.getListing = async (req, res, next) => {
   try {
     const listing = await Listing.findById(req.params.id)
-      .populate('shopOwner', 'name shopName shopAddress shopDescription');
+      .populate('shopOwner', 'name shopName shopAddress shopDescription shopLocation averagePickupMinutes isActive shopApprovalStatus');
 
     if (!listing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
+    if (
+      !listing.isAvailable ||
+      listing.moderationStatus !== 'approved' ||
+      listing.quantity <= 0 ||
+      (listing.expiresAt && listing.expiresAt <= new Date()) ||
+      !listing.shopOwner ||
+      listing.shopOwner.isActive !== true ||
+      listing.shopOwner.shopApprovalStatus !== 'approved'
+    ) {
+      return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
 
-    res.status(200).json({ success: true, data: listing });
+    const lat = toNumber(req.query.lat);
+    const lng = toNumber(req.query.lng);
+
+    res.status(200).json({ success: true, data: addDiscoveryMeta(listing, lat, lng) });
   } catch (error) { next(error); }
 };

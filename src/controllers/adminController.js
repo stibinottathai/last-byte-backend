@@ -1,5 +1,7 @@
 const User = require('../models/User');
 const Listing = require('../models/Listing');
+const Order = require('../models/Order');
+const PlatformSetting = require('../models/PlatformSetting');
 const ApiError = require('../utils/ApiError');
 
 const buildShopLocation = (latitude, longitude) => {
@@ -14,6 +16,14 @@ const buildShopLocation = (latitude, longitude) => {
     coordinates: [lng, lat],
   };
 };
+
+const getRestorableListingFilter = (shopOwnerId) => ({
+  shopOwner: shopOwnerId,
+  isAvailable: true,
+  moderationStatus: 'approved',
+  quantity: { $gt: 0 },
+  $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: new Date() } }],
+});
 
 // =============================================
 //  USER MANAGEMENT
@@ -72,13 +82,6 @@ exports.getUser = async (req, res, next) => {
       return next(new ApiError('User not found', 404));
     }
 
-    if (user.role === 'shopOwner' && (updates.shopLocation || updates.averagePickupMinutes !== undefined)) {
-      const listingUpdates = {};
-      if (updates.shopLocation) listingUpdates.shopLocation = updates.shopLocation;
-      if (updates.averagePickupMinutes !== undefined) listingUpdates.averagePickupMinutes = updates.averagePickupMinutes;
-      await Listing.updateMany({ shopOwner: user._id }, listingUpdates);
-    }
-
     res.status(200).json({
       success: true,
       data: user,
@@ -97,7 +100,7 @@ exports.updateUser = async (req, res, next) => {
   try {
     const allowedFields = [
       'name', 'email', 'phone', 'role', 'isActive', 'shopName', 'shopAddress',
-      'shopDescription', 'averagePickupMinutes',
+      'shopDescription', 'averagePickupMinutes', 'shopApprovalStatus', 'shopRejectionReason', 'banReason',
     ];
     const updates = {};
 
@@ -121,6 +124,13 @@ exports.updateUser = async (req, res, next) => {
 
     if (!user) {
       return next(new ApiError('User not found', 404));
+    }
+
+    if (user.role === 'shopOwner' && (updates.shopLocation || updates.averagePickupMinutes !== undefined)) {
+      const listingUpdates = {};
+      if (updates.shopLocation) listingUpdates.shopLocation = updates.shopLocation;
+      if (updates.averagePickupMinutes !== undefined) listingUpdates.averagePickupMinutes = updates.averagePickupMinutes;
+      await Listing.updateMany({ shopOwner: user._id }, listingUpdates);
     }
 
     res.status(200).json({
@@ -208,6 +218,7 @@ exports.createShopOwner = async (req, res, next) => {
       shopDescription,
       shopLocation: buildShopLocation(shopLatitude, shopLongitude),
       averagePickupMinutes,
+      shopApprovalStatus: 'approved',
     });
 
     res.status(201).json({
@@ -244,6 +255,7 @@ exports.getShopOwners = async (req, res, next) => {
 
     const filter = { role: 'shopOwner' };
     if (req.query.isActive !== undefined) filter.isActive = req.query.isActive === 'true';
+    if (req.query.shopApprovalStatus) filter.shopApprovalStatus = req.query.shopApprovalStatus;
     if (req.query.search) {
       filter.$or = [
         { name: { $regex: req.query.search, $options: 'i' } },
@@ -289,7 +301,7 @@ exports.updateShopOwner = async (req, res, next) => {
 
     const allowedFields = [
       'name', 'email', 'phone', 'isActive', 'shopName', 'shopAddress',
-      'shopDescription', 'averagePickupMinutes',
+      'shopDescription', 'averagePickupMinutes', 'shopApprovalStatus', 'shopRejectionReason', 'banReason',
     ];
     const updates = {};
 
@@ -305,6 +317,7 @@ exports.updateShopOwner = async (req, res, next) => {
       new: true,
       runValidators: true,
     });
+    let visibleListingCount;
 
     if (updates.shopLocation || updates.averagePickupMinutes !== undefined) {
       const listingUpdates = {};
@@ -313,10 +326,17 @@ exports.updateShopOwner = async (req, res, next) => {
       await Listing.updateMany({ shopOwner: req.params.id }, listingUpdates);
     }
 
+    if (updates.isActive === true && updated.shopApprovalStatus === 'approved') {
+      visibleListingCount = await Listing.countDocuments(getRestorableListingFilter(updated._id));
+    }
+
     res.status(200).json({
       success: true,
-      message: 'Shop owner updated successfully',
+      message: visibleListingCount !== undefined
+        ? `Shop owner updated successfully. ${visibleListingCount} non-expired listing(s) are visible again.`
+        : 'Shop owner updated successfully',
       data: updated,
+      ...(visibleListingCount !== undefined ? { visibleListingCount } : {}),
     });
   } catch (error) {
     next(error);
@@ -356,6 +376,111 @@ exports.deleteShopOwner = async (req, res, next) => {
 };
 
 // =============================================
+//  MODERATION
+// =============================================
+
+exports.updateShopApproval = async (req, res, next) => {
+  try {
+    const { status, reason } = req.body;
+    if (!['pending', 'approved', 'rejected'].includes(status)) {
+      return next(new ApiError('Invalid shop approval status', 400));
+    }
+
+    const shopOwner = await User.findOneAndUpdate(
+      { _id: req.params.id, role: 'shopOwner' },
+      {
+        shopApprovalStatus: status,
+        shopRejectionReason: status === 'rejected' ? reason : '',
+        isActive: status !== 'rejected',
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!shopOwner) return next(new ApiError('Shop owner not found', 404));
+
+    res.status(200).json({ success: true, message: 'Shop approval updated', data: shopOwner });
+  } catch (error) { next(error); }
+};
+
+exports.getListingsForReview = async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const skip = (page - 1) * limit;
+    const filter = {};
+    if (req.query.moderationStatus) filter.moderationStatus = req.query.moderationStatus;
+    if (req.query.reported === 'true') filter.reportCount = { $gt: 0 };
+
+    const [listings, total] = await Promise.all([
+      Listing.find(filter).populate('shopOwner', 'name email shopName shopAddress').sort('-createdAt').skip(skip).limit(limit),
+      Listing.countDocuments(filter),
+    ]);
+
+    res.status(200).json({ success: true, count: listings.length, total, page, pages: Math.ceil(total / limit), data: listings });
+  } catch (error) { next(error); }
+};
+
+exports.updateListingModeration = async (req, res, next) => {
+  try {
+    const { status, note } = req.body;
+    if (!['pending', 'approved', 'rejected'].includes(status)) {
+      return next(new ApiError('Invalid listing moderation status', 400));
+    }
+
+    const listing = await Listing.findByIdAndUpdate(
+      req.params.id,
+      {
+        moderationStatus: status,
+        moderationNote: note || '',
+        isAvailable: status !== 'rejected',
+      },
+      { new: true, runValidators: true }
+    ).populate('shopOwner', 'name email shopName');
+
+    if (!listing) return next(new ApiError('Listing not found', 404));
+
+    res.status(200).json({
+      success: true,
+      message: status === 'rejected' ? 'Listing delisted' : 'Listing relisted',
+      data: listing,
+    });
+  } catch (error) { next(error); }
+};
+
+exports.banUser = async (req, res, next) => {
+  try {
+    if (req.params.id === req.user._id.toString()) {
+      return next(new ApiError('You cannot ban your own account', 400));
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { isActive: false, banReason: req.body.reason || 'Policy violation' },
+      { new: true, runValidators: true }
+    );
+    if (!user) return next(new ApiError('User not found', 404));
+
+    res.status(200).json({ success: true, message: 'User banned', data: user });
+  } catch (error) { next(error); }
+};
+
+exports.reportListing = async (req, res, next) => {
+  try {
+    const listing = await Listing.findByIdAndUpdate(
+      req.params.id,
+      {
+        $inc: { reportCount: 1 },
+        $push: { reportReasons: req.body.reason || 'Reported by user' },
+      },
+      { new: true }
+    );
+    if (!listing) return next(new ApiError('Listing not found', 404));
+
+    res.status(200).json({ success: true, message: 'Listing reported', data: { reportCount: listing.reportCount } });
+  } catch (error) { next(error); }
+};
+
+// =============================================
 //  DASHBOARD STATS
 // =============================================
 
@@ -366,12 +491,38 @@ exports.deleteShopOwner = async (req, res, next) => {
  */
 exports.getStats = async (req, res, next) => {
   try {
-    const [totalUsers, totalShopOwners, totalListings, activeListings] = await Promise.all([
+    const [
+      totalUsers,
+      totalShopOwners,
+      totalListings,
+      activeListings,
+      activeUsers,
+      inactiveUsers,
+      pendingShops,
+      delistedListings,
+      orderStats,
+    ] = await Promise.all([
       User.countDocuments({ role: 'user' }),
       User.countDocuments({ role: 'shopOwner' }),
       Listing.countDocuments(),
       Listing.countDocuments({ isAvailable: true }),
+      User.countDocuments({ isActive: true }),
+      User.countDocuments({ isActive: false }),
+      User.countDocuments({ role: 'shopOwner', shopApprovalStatus: 'pending' }),
+      Listing.countDocuments({ moderationStatus: 'rejected' }),
+      Order.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalOrders: { $sum: 1 },
+            revenue: { $sum: '$totalPrice' },
+            platformFees: { $sum: '$platformFeeAmount' },
+            shopPayouts: { $sum: '$shopPayoutAmount' },
+          },
+        },
+      ]),
     ]);
+    const totals = orderStats[0] || { totalOrders: 0, revenue: 0, platformFees: 0, shopPayouts: 0 };
 
     res.status(200).json({
       success: true,
@@ -380,9 +531,79 @@ exports.getStats = async (req, res, next) => {
         totalShopOwners,
         totalListings,
         activeListings,
+        activeUsers,
+        inactiveUsers,
+        pendingShops,
+        delistedListings,
+        totalOrders: totals.totalOrders,
+        revenue: totals.revenue,
+        platformFees: totals.platformFees,
+        shopPayouts: totals.shopPayouts,
       },
     });
   } catch (error) {
     next(error);
   }
+};
+
+exports.getBusinessInsights = async (req, res, next) => {
+  try {
+    const [orders, topAreas, userActivity] = await Promise.all([
+      Order.aggregate([
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            revenue: { $sum: '$totalPrice' },
+            platformFees: { $sum: '$platformFeeAmount' },
+          },
+        },
+      ]),
+      Order.aggregate([
+        {
+          $group: {
+            _id: '$shopSnapshot.shopAddress',
+            orders: { $sum: 1 },
+            revenue: { $sum: '$totalPrice' },
+          },
+        },
+        { $sort: { orders: -1, revenue: -1 } },
+        { $limit: 5 },
+      ]),
+      User.aggregate([
+        { $group: { _id: '$isActive', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        orders,
+        topAreas,
+        userActivity,
+      },
+    });
+  } catch (error) { next(error); }
+};
+
+exports.getPlatformSettings = async (req, res, next) => {
+  try {
+    const settings = await PlatformSetting.findOneAndUpdate(
+      { key: 'default' },
+      { $setOnInsert: { key: 'default' } },
+      { upsert: true, new: true }
+    );
+    res.status(200).json({ success: true, data: settings });
+  } catch (error) { next(error); }
+};
+
+exports.updatePlatformSettings = async (req, res, next) => {
+  try {
+    const settings = await PlatformSetting.findOneAndUpdate(
+      { key: 'default' },
+      { platformFeePercent: req.body.platformFeePercent },
+      { upsert: true, new: true, runValidators: true }
+    );
+    res.status(200).json({ success: true, message: 'Platform fee updated', data: settings });
+  } catch (error) { next(error); }
 };

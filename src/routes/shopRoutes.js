@@ -23,6 +23,7 @@ router.post(
     body('originalPrice').isFloat({ min: 0 }).withMessage('Original price must be a positive number'),
     body('discountedPrice').isFloat({ min: 0 }).withMessage('Discounted price must be a positive number'),
     body('quantity').optional().isInt({ min: 0 }).withMessage('Quantity must be a non-negative integer'),
+    body('maxQuantityPerUser').optional().isInt({ min: 1 }).withMessage('Per-user booking limit must be at least 1'),
     body('category').optional().isIn(['bakery', 'meals', 'snacks', 'beverages', 'dairy', 'fruits', 'vegetables', 'other']),
     body('cuisine').optional().isIn(['indian', 'arabic', 'bakery', 'continental', 'chinese', 'italian', 'desserts', 'beverages', 'other']),
     body('dietaryType').optional().isIn(['veg', 'non-veg']),

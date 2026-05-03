@@ -12,6 +12,13 @@ const {
   updateShopOwner,
   deleteShopOwner,
   getStats,
+  updateShopApproval,
+  getListingsForReview,
+  updateListingModeration,
+  banUser,
+  getBusinessInsights,
+  getPlatformSettings,
+  updatePlatformSettings,
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -24,6 +31,7 @@ router.use(authorize('admin'));
 router.get('/users', getUsers);
 router.get('/users/:id', getUser);
 router.put('/users/:id', updateUser);
+router.patch('/users/:id/ban', [body('reason').optional().trim()], validate, banUser);
 router.delete('/users/:id', deleteUser);
 
 // --------------- Shop Owner Management ---------------
@@ -48,9 +56,40 @@ router.post(
 );
 router.get('/shop-owners', getShopOwners);
 router.put('/shop-owners/:id', updateShopOwner);
+router.patch(
+  '/shop-owners/:id/approval',
+  [
+    body('status').isIn(['pending', 'approved', 'rejected']).withMessage('Invalid approval status'),
+    body('reason').optional().trim(),
+  ],
+  validate,
+  updateShopApproval
+);
 router.delete('/shop-owners/:id', deleteShopOwner);
+
+// --------------- Moderation ---------------
+router.get('/listings', getListingsForReview);
+router.patch(
+  '/listings/:id/moderation',
+  [
+    body('status').isIn(['pending', 'approved', 'rejected']).withMessage('Invalid moderation status'),
+    body('note').optional().trim(),
+  ],
+  validate,
+  updateListingModeration
+);
 
 // --------------- Dashboard Stats ---------------
 router.get('/stats', getStats);
+router.get('/insights', getBusinessInsights);
+
+// --------------- Commission Settings ---------------
+router.get('/settings', getPlatformSettings);
+router.put(
+  '/settings',
+  [body('platformFeePercent').isFloat({ min: 0, max: 100 }).withMessage('Platform fee must be between 0 and 100')],
+  validate,
+  updatePlatformSettings
+);
 
 module.exports = router;

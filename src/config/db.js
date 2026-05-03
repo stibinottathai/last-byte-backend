@@ -1,27 +1,30 @@
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
+  const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/lastbyte';
+
   try {
-    // Try connecting to the configured MongoDB URI first
-    await mongoose.connect(process.env.MONGO_URI, {
-      serverSelectionTimeoutMS: 3000,
-    });
-    console.log(`✅ MongoDB Connected: ${mongoose.connection.host}`);
+    await mongoose.connect(mongoUri);
+    console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
   } catch (err) {
-    console.log('⚠️  Local MongoDB not found. Starting in-memory MongoDB...');
-    try {
-      const { MongoMemoryServer } = require('mongodb-memory-server');
-      const mongod = await MongoMemoryServer.create();
-      const uri = mongod.getUri();
-      await mongoose.connect(uri);
-      console.log(`✅ In-Memory MongoDB Connected (dev mode)`);
-      console.log(`   Data will be lost on server restart.\n`);
-    } catch (memErr) {
-      console.error(`❌ MongoDB Connection Error: ${memErr.message}`);
-      process.exit(1);
+    if (process.env.USE_MEMORY_DB === 'true') {
+      try {
+        const { MongoMemoryServer } = require('mongodb-memory-server');
+        const mongod = await MongoMemoryServer.create();
+        const uri = mongod.getUri();
+        await mongoose.connect(uri);
+        console.log('In-memory MongoDB connected. Data will be lost on restart.');
+        return;
+      } catch (memErr) {
+        console.error(`In-memory MongoDB connection error: ${memErr.message}`);
+      }
     }
+
+    console.error(`MongoDB connection error: ${err.message}`);
+    console.error(`Checked URI: ${mongoUri}`);
+    console.error('Make sure the MongoDB service is running, then restart the server.');
+    process.exit(1);
   }
 };
 
 module.exports = connectDB;
-

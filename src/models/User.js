@@ -39,6 +39,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    banReason: {
+      type: String,
+      trim: true,
+    },
 
     // Shop owner specific fields
     shopName: {
@@ -50,6 +54,17 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
     shopDescription: {
+      type: String,
+      trim: true,
+    },
+    shopApprovalStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: function () {
+        return this.role === 'shopOwner' ? 'pending' : undefined;
+      },
+    },
+    shopRejectionReason: {
       type: String,
       trim: true,
     },
