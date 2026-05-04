@@ -1,5 +1,4 @@
 const Listing = require('../models/Listing');
-const User = require('../models/User');
 
 const toNumber = (value) => {
   if (value === undefined || value === null || value === '') return undefined;
@@ -61,13 +60,6 @@ exports.getListings = async (req, res, next) => {
       $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: now } }],
     };
 
-    const activeShopOwnerIds = await User.find({
-      role: 'shopOwner',
-      isActive: true,
-      shopApprovalStatus: 'approved',
-    }).distinct('_id');
-    filter.shopOwner = { $in: activeShopOwnerIds };
-
     if (req.query.category) filter.category = req.query.category;
     if (req.query.dietaryType) filter.dietaryType = req.query.dietaryType;
     if (req.query.cuisine) filter.cuisine = req.query.cuisine;
@@ -107,25 +99,31 @@ exports.getListings = async (req, res, next) => {
     if (req.query.sort === 'expires_soon') sort = 'expiresAt';
     if (req.query.sort === 'pickup_time') sort = 'averagePickupMinutes';
 
-    const [listingDocs, totalBeforeDistanceFilter] = await Promise.all([
-      Listing.find(filter)
-        .populate('shopOwner', 'name shopName shopAddress shopLocation averagePickupMinutes isActive shopApprovalStatus')
-        .sort(sort),
-      Listing.countDocuments(filter),
-    ]);
+    const listingDocs = await Listing.find(filter)
+      .populate('shopOwner', 'name shopName shopAddress shopLocation averagePickupMinutes isActive shopApprovalStatus')
+      .sort(sort);
+
+    // Post-populate: only include listings whose shop owner is active & approved
+    const validListingDocs = listingDocs.filter((listing) => {
+      const owner = listing.shopOwner;
+      if (!owner) return false;
+      return owner.isActive === true && owner.shopApprovalStatus === 'approved';
+    });
 
     const lat = toNumber(req.query.lat);
     const lng = toNumber(req.query.lng);
     const maxDistanceKm = toNumber(req.query.maxDistanceKm);
     const minDiscount = toNumber(req.query.minDiscount);
 
-    let listings = listingDocs.map((listing) => addDiscoveryMeta(listing, lat, lng));
+    let listings = validListingDocs.map((listing) => addDiscoveryMeta(listing, lat, lng));
 
     if (minDiscount !== undefined) {
       listings = listings.filter((listing) => listing.discountPercentage >= minDiscount);
     }
+    // Only apply distance filter when user has location AND maxDistanceKm is set;
+    // listings without shopLocation (distanceKm === null) are kept and shown at the end
     if (lat !== undefined && lng !== undefined && maxDistanceKm !== undefined) {
-      listings = listings.filter((listing) => listing.distanceKm !== null && listing.distanceKm <= maxDistanceKm);
+      listings = listings.filter((listing) => listing.distanceKm === null || listing.distanceKm <= maxDistanceKm);
     }
 
     if (req.query.sort === 'nearby' && lat !== undefined && lng !== undefined) {
@@ -136,6 +134,7 @@ exports.getListings = async (req, res, next) => {
     }
 
     const total = listings.length;
+    const totalBeforeDistanceFilter = validListingDocs.length;
     const paginatedListings = listings.slice(skip, skip + limit);
 
     res.status(200).json({
@@ -167,11 +166,12 @@ exports.getListing = async (req, res, next) => {
       !listing.isAvailable ||
       listing.moderationStatus !== 'approved' ||
       listing.quantity <= 0 ||
-      (listing.expiresAt && listing.expiresAt <= new Date()) ||
-      !listing.shopOwner ||
-      listing.shopOwner.isActive !== true ||
-      listing.shopOwner.shopApprovalStatus !== 'approved'
+      (listing.expiresAt && listing.expiresAt <= new Date())
     ) {
+      return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
+    // If the shop owner is no longer active/approved, hide the listing from public
+    if (listing.shopOwner && (listing.shopOwner.isActive === false || listing.shopOwner.shopApprovalStatus === 'rejected')) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 

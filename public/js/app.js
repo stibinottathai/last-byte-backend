@@ -299,7 +299,7 @@ async function loadPublicListings() {
   if (quickDealFilter === 'closingSoon') url += '&closingSoon=true&closingSoonMinutes=60';
   if (quickDealFilter === 'bigDiscount') url += '&minDiscount=80&sort=discount';
   if (userLocation) {
-    url += `&lat=${userLocation.lat}&lng=${userLocation.lng}&maxDistanceKm=25`;
+    url += `&lat=${userLocation.lat}&lng=${userLocation.lng}`;
     const status = document.getElementById('locationStatus');
     if (status) status.textContent = 'Sorted by nearby shops';
   }

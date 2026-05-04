@@ -49,7 +49,7 @@ exports.createListing = async (req, res, next) => {
       readyAt, pickupStartAt, pickupEndAt,
       averagePickupMinutes: averagePickupMinutes ?? req.user.averagePickupMinutes,
       image, expiresAt,
-      shopLocation: req.user.shopLocation,
+      shopLocation: (req.user.shopLocation?.coordinates?.length === 2) ? req.user.shopLocation : undefined,
       shopOwner: req.user._id,
       moderationStatus: 'approved',
     });
